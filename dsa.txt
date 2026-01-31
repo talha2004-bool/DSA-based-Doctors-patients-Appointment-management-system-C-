@@ -1,0 +1,335 @@
+#include <iostream>
+using namespace std;
+class Systemtools {
+public:
+    static bool readInt(const char* msg, int& value) {
+        cout << msg;
+        cin >> value;
+
+        if (cin.fail()) {
+            cin.clear();
+            char ch;
+            while ((ch = cin.get()) != '\n' && ch != EOF);
+            cout << "Invalid input. Please enter a number only." << endl;
+            return false;
+        }
+        return true;
+    }
+
+    static bool valid_date(const char* d) {
+        if (str_len(d) != 10) return false;
+        if (d[2] != '/' || d[5] != '/') return false;
+
+        for (int i = 0; i < 10; i++) {
+            if (i == 2 || i == 5) continue;
+            if (d[i] < '0' || d[i] > '9') return false;
+        }
+
+        int day   = (d[0]-'0')*10 + (d[1]-'0');
+        int month = (d[3]-'0')*10 + (d[4]-'0');
+        int year  = (d[6]-'0')*1000 + (d[7]-'0')*100 + (d[8]-'0')*10 + (d[9]-'0');
+
+        if (month < 1 || month > 12) return false;
+        if (year < 1900 || year > 2100) return false;
+
+        int DIM[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+        if (month == 2 && leapyear(year)) DIM[1] = 29;
+
+        return (day >= 1 && day <= DIM[month - 1]);
+    }
+
+    static bool valid_time(const char* t) {
+        if (str_len(t) != 5) return false;
+        if (t[2] != ':') return false;
+
+        if (t[0] < '0' || t[0] > '9') return false;
+        if (t[1] < '0' || t[1] > '9') return false;
+        if (t[3] < '0' || t[3] > '9') return false;
+        if (t[4] < '0' || t[4] > '9') return false;
+
+        return true;
+    }
+    static int str_len(const char* s) {
+        int i = 0;
+        while (s[i] != '\0') i++;
+        return i;
+    }
+
+    static void str_cpy(char* dest, const char* src) {
+        int i = 0;
+        while (src[i] != '\0') {
+            dest[i] = src[i];
+            i++;
+        }
+        dest[i] = '\0';
+    }
+
+    static int str_cmp(const char* a, const char* b) {
+        int i = 0;
+        while (a[i] && b[i]) {
+            if (a[i] != b[i])
+                return a[i] - b[i];
+            i++;
+        }
+        return a[i] - b[i];
+    }
+
+    static bool str_eq(const char* a, const char* b) {
+        return str_cmp(a, b) == 0;
+    }
+
+    static bool leapyear(int y) {
+        return (y % 400 == 0) || (y % 4 == 0 && y % 100 != 0);
+    }
+
+    friend class Appointmentmanage;
+    friend class DPRelation;
+    friend class Records;
+};
+
+class Appointmentmanage {
+    int patientID;
+    char date[15];
+    char time[10];
+    Appointmentmanage* left;
+    Appointmentmanage* right;
+
+    Appointmentmanage(int pid, const char* d, const char* t) {
+        patientID = pid;
+        Systemtools::str_cpy(date, d);
+        Systemtools::str_cpy(time, t);
+        left = right = nullptr;
+    }
+
+    int compare(Appointmentmanage* other) {
+        int c = Systemtools::str_cmp(date, other->date);
+        if (c == 0)
+            c = Systemtools::str_cmp(time, other->time);
+        return c;
+    }
+
+    friend class DPRelation;
+    friend class Records;
+};
+
+class DPRelation {
+    Appointmentmanage* root;
+
+    Appointmentmanage* insert(Appointmentmanage* node, Appointmentmanage* n) {
+        if (!node) return n;
+        if (n->compare(node) < 0)
+            node->left = insert(node->left, n);
+        else
+            node->right = insert(node->right, n);
+        return node;
+    }
+
+    void inorder(Appointmentmanage* node) {
+        if (!node) return;
+        inorder(node->left);
+        cout << "Patient ID: " << node->patientID
+             << " | Date: " << node->date
+             << " | Time: " << node->time << endl;
+        inorder(node->right);
+    }
+
+    bool conflict(Appointmentmanage* node, const char* d, const char* t) {
+        if (!node) return false;
+
+        if (Systemtools::str_eq(node->date, d) &&
+            Systemtools::str_eq(node->time, t))
+            return true;
+
+        if (Systemtools::str_cmp(d, node->date) < 0 ||
+           (Systemtools::str_cmp(d, node->date) == 0 &&
+            Systemtools::str_cmp(t, node->time) < 0))
+            return conflict(node->left, d, t);
+
+        return conflict(node->right, d, t);
+    }
+
+    Appointmentmanage* findMin(Appointmentmanage* node) {
+        while (node && node->left)
+            node = node->left;
+        return node;
+    }
+
+    Appointmentmanage* removeNode(Appointmentmanage* node, int pid, Appointmentmanage*& del) {
+        if (!node) return nullptr;
+
+        if (pid < node->patientID)
+            node->left = removeNode(node->left, pid, del);
+        else if (pid > node->patientID)
+            node->right = removeNode(node->right, pid, del);
+        else {
+            del = node;
+            if (!node->left) return node->right;
+            if (!node->right) return node->left;
+
+            Appointmentmanage* m = findMin(node->right);
+            node->patientID = m->patientID;
+            Systemtools::str_cpy(node->date, m->date);
+            Systemtools::str_cpy(node->time, m->time);
+            node->right = removeNode(node->right, m->patientID, del);
+        }
+        return node;
+    }
+
+    DPRelation() {
+        root = nullptr;
+    }
+
+    void add(int pid, const char* d, const char* t) {
+        root = insert(root, new Appointmentmanage(pid, d, t));
+    }
+
+    bool hasConflict(const char* d, const char* t) {
+        return conflict(root, d, t);
+    }
+
+    Appointmentmanage* remove(int pid) {
+        Appointmentmanage* del = nullptr;
+        root = removeNode(root, pid, del);
+        return del;
+    }
+
+    void show() {
+        if (!root) cout << "No records." << endl;
+        else inorder(root);
+    }
+
+    friend class Records;
+};
+
+class Records {
+    DPRelation* pending;
+    DPRelation* checked;
+    int size;
+
+public:
+    Records(int s) {
+        size = s;
+        pending = new DPRelation[size];
+        checked = new DPRelation[size];
+    }
+
+    void add_appointment(int dID, int pID, const char* d, const char* t) {
+        if (dID < 0 || dID >= size) {
+            cout << "Invalid Doctor ID" << endl;
+            return;
+        }
+
+        if (!Systemtools::valid_date(d)) {
+            cout << "Invalid Date" << endl;
+            return;
+        }
+
+        if (!Systemtools::valid_time(t)) {
+            cout << "Invalid Time" << endl;
+            return;
+        }
+
+        if (pending[dID].hasConflict(d, t)) {
+            cout << "Time slot already booked" << endl;
+            return;
+        }
+
+        pending[dID].add(pID, d, t);
+        cout << "Appointment Added Successfully" << endl;
+    }
+
+    void mark_checked(int dID, int pID) {
+        if (dID < 0 || dID >= size) {
+            cout << "Invalid Doctor ID" << endl;
+            return;
+        }
+
+        Appointmentmanage* a = pending[dID].remove(pID);
+        if (!a) {
+            cout << "Appointment Not Found" << endl;
+            return;
+        }
+
+        checked[dID].add(a->patientID, a->date, a->time);
+        delete a;
+        cout << "Appointment Marked as CHECKED" << endl;
+    }
+
+    void showdnumbersofdoctors() {
+        cout << "Total Doctors: " << size << endl;
+    }
+
+    void showPending(int dID) {
+        if (dID < 0 || dID >= size) {
+            cout << "Invalid Doctor ID" << endl;
+            return;
+        }
+        pending[dID].show();
+    }
+
+    void showChecked(int dID) {
+        if (dID < 0 || dID >= size) {
+            cout << "Invalid Doctor ID" << endl;
+            return;
+        }
+        checked[dID].show();
+    }
+};
+
+int main() {
+    Records graph(10);
+    int choice;
+
+    do {
+        cout << "===== Doctor Appointment System =====" << endl;
+        cout << "1. Add Appointment" << endl;
+        cout << "2. View Pending" << endl;
+        cout << "3. View Checked" << endl;
+        cout << "4. Mark as Checked" << endl;
+        cout << "5. Show Doctor Numbers" << endl;
+        cout << "0. Exit" << endl;
+
+        if (!Systemtools::readInt("Choice: ", choice))
+            continue;
+
+        if (choice == 1) {
+            int d, p;
+            char date[15], time[10];
+
+            if (!Systemtools::readInt("Doctor ID: ", d)) continue;
+            if (!Systemtools::readInt("Patient ID: ", p)) continue;
+
+            cout << "Date (DD/MM/YYYY): ";
+            cin >> date;
+
+            cout << "Time (HH:MM): ";
+            cin >> time;
+
+            graph.add_appointment(d, p, date, time);
+        }
+        else if (choice == 2) {
+            int d;
+            if (!Systemtools::readInt("Enter Doctor ID: ", d)) continue;
+            graph.showPending(d);
+        }
+        else if (choice == 3) {
+            int d;
+            if (!Systemtools::readInt("Enter Doctor ID: ", d)) continue;
+            graph.showChecked(d);
+        }
+        else if (choice == 4) {
+            int d, p;
+            if (!Systemtools::readInt("Enter Doctor ID: ", d)) continue;
+            if (!Systemtools::readInt("Enter Patient ID: ", p)) continue;
+            graph.mark_checked(d, p);
+        }
+        else if (choice == 5) {
+            graph.showdnumbersofdoctors();
+        }
+
+    } while (choice != 0);
+
+    cout << "Exiting... Goodbye!" << endl;
+    return 0;
+}
+
